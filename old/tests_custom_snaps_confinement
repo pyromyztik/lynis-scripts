@@ -1,0 +1,52 @@
+#!/bin/sh
+
+#################################################################################
+#
+# Custom test for Snap Package Confinement (--classic flag)
+#
+#################################################################################
+
+    InsertSection "Custom tests - Snap Packages"
+
+    # Test        : CUST-0050
+    # Description : Check snap packages for classic confinement
+
+    # Check if snap is available
+    if [ -n "$(command -v snap)" ]; then 
+        PREQS_MET="YES"
+    else 
+        PREQS_MET="NO"
+        SKIPREASON="Snap package manager not found"
+    fi
+
+    Register --test-no CUST-0050 --preqs-met "${PREQS_MET}" --skip-reason "${SKIPREASON}" --weight H --network NO --category security --description "Check snap packages for classic confinement"
+    
+    if [ ${SKIPTEST} -eq 0 ]; then
+        LogText "Test: checking for snap packages with classic confinement"
+        
+        # get list of snaps installed with classic confinement
+        # in snap list output, notes are typically in the last column.
+        CLASSIC_SNAPS=$(snap list 2>/dev/null | awk '/classic/ {print $1}')
+        
+        if [ -z "${CLASSIC_SNAPS}" ]; then
+            LogText "Result: No snap packages found with classic confinement."
+            Display --indent 2 --text "- Snap classic confinement" --result "${STATUS_OK}" --color GREEN
+        else
+            LogText "Result: Found snap packages with classic confinement"
+            Display --indent 2 --text "- Snap classic confinement" --result "${STATUS_WARNING}" --color RED
+            
+            for pkg in ${CLASSIC_SNAPS}; do
+                LogText "Found classic confinement for snap package '${pkg}'"
+                # primary issue warning
+                ReportWarning "${TEST_NO}" "Snap package '${pkg}' is installed with classic confinement" "snap:${pkg}" "text:Review package and consider strictly confined alternatives"
+                # secondary actionable fix
+                ReportSuggestion "${TEST_NO}" "Remove classic confinement snap packages if unneeded" "snap:${pkg}" "text:Run 'sudo snap remove ${pkg}' to delete it"
+            done
+        fi
+    fi
+#
+#################################################################################
+
+# Wait for keypress (unless --quick is being used)
+WaitForKeyPress
+

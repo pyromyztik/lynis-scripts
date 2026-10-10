@@ -1,0 +1,66 @@
+#!/bin/sh
+
+#################################################################################
+#
+# Custom Lynis Script: Stale and Abandoned Key Auditor
+#
+#################################################################################
+
+    InsertSection "Custom Tests - SSH Keys"
+
+#
+#################################################################################
+#
+    # Test        : CUST-0100
+    # Description : Stale and Abandoned Key Auditor
+    
+    # register the custom test
+    Register --test-no CUST-0100 --weight M --network NO --category security --description "Check for stale and abandoned SSH public keys"
+    
+    if [ ${SKIPTEST} -eq 0 ]; then
+        FOUNDPROBLEM=0
+        LogText "Test: Checking for abandoned SSH public keys in user directories"
+
+        # home directories for users that do not exist in /etc/passwd anymore
+        if [ -d "/home" ]; then
+            for HOMEDIR in /home/*; do
+                if [ -d "${HOMEDIR}" ]; then
+                    USERNAME=$(basename "${HOMEDIR}")
+                    # If the user is not found in /etc/passwd
+                    if ! grep -q "^${USERNAME}:" /etc/passwd; then
+                        if FileExists "${HOMEDIR}/.ssh/authorized_keys"; then
+                            LogText "Result: Abandoned authorized_keys found in ${HOMEDIR} (User ${USERNAME} no longer in /etc/passwd)"
+                            ReportWarning "${TEST_NO}" "Abandoned SSH keys found for deleted user" "${USERNAME} (${HOMEDIR}/.ssh/authorized_keys)" "text:Run: rm -rf ${HOMEDIR}"
+                            FOUNDPROBLEM=1
+                        fi
+                    fi
+                fi
+            done
+        fi
+        # users in /etc/passwd that are disabled but still have authorized_keys
+        while IFS=: read -r user pass uid gid info home shell; do
+            if [ -d "${home}" ]; then
+                if FileExists "${home}/.ssh/authorized_keys"; then
+                    # check if shell is disabled or nologin
+                    if echo "${shell}" | grep -Eq 'nologin|false|sync|halt|shutdown'; then
+                        LogText "Result: User ${user} has a disabled shell but has SSH keys configured"
+                        ReportWarning "${TEST_NO}" "SSH keys found for disabled user" "${user} (${home}/.ssh/authorized_keys)" "text:Run: rm ${home}/.ssh/authorized_keys"
+                        FOUNDPROBLEM=1
+                    fi
+                fi
+            fi
+        done < /etc/passwd
+        
+        # display the result
+        if [ ${FOUNDPROBLEM} -eq 0 ]; then
+            Display --indent 2 --text "- Checking for stale/abandoned SSH keys" --result "${STATUS_OK}" --color GREEN
+        else
+            Display --indent 2 --text "- Checking for stale/abandoned SSH keys" --result "${STATUS_WARNING}" --color RED
+            ReportSuggestion "${TEST_NO}" "Review reported unused or abandoned SSH public keys and remove them if they are no longer required"
+        fi
+    fi
+#
+#################################################################################
+
+# Wait for keypress (unless --quick is being used)
+WaitForKeyPress

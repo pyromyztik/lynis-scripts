@@ -1,0 +1,25 @@
+#!/bin/sh
+
+#################################################################################
+#
+# Custom tests main loader
+#
+#################################################################################
+
+LogText "Test: Loading custom Lynis checks..."
+
+# Source the Snap Confinement check
+if [ -f "/usr/share/lynis/include/tests_custom_snaps_confinement" ]; then
+    . /usr/share/lynis/include/tests_custom_snaps_confinement
+else
+    LogText "Warning: Custom test file tests_custom_snaps_confinement not found."
+fi
+
+# Source the Stale SSH Keys check
+if [ -f "/usr/share/lynis/include/tests_custom_stale_ssh_keys" ]; then
+    . /usr/share/lynis/include/tests_custom_stale_ssh_keys
+else
+    LogText "Warning: Custom test file tests_custom_stale_ssh_keys not found."
+fi
+
+#================================================================================
