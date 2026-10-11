@@ -9,15 +9,23 @@
 LogText "Test: Loading custom Lynis checks..."
 
 # Source the Snap Confinement check
-if [ -f "/usr/share/lynis/include/tests_custom_snaps_confinement" ]; then
+if [ -n "${INCLUDEDIR}" ] && [ -f "${INCLUDEDIR}/tests_custom_snaps_confinement" ]; then
+    . "${INCLUDEDIR}/tests_custom_snaps_confinement"
+elif [ -f "/usr/share/lynis/include/tests_custom_snaps_confinement" ]; then
     . /usr/share/lynis/include/tests_custom_snaps_confinement
+elif [ -f "./tests_custom_snaps_confinement" ]; then
+    . ./tests_custom_snaps_confinement
 else
     LogText "Warning: Custom test file tests_custom_snaps_confinement not found."
 fi
 
 # Source the Stale SSH Keys check
-if [ -f "/usr/share/lynis/include/tests_custom_stale_ssh_keys" ]; then
+if [ -n "${INCLUDEDIR}" ] && [ -f "${INCLUDEDIR}/tests_custom_stale_ssh_keys" ]; then
+    . "${INCLUDEDIR}/tests_custom_stale_ssh_keys"
+elif [ -f "/usr/share/lynis/include/tests_custom_stale_ssh_keys" ]; then
     . /usr/share/lynis/include/tests_custom_stale_ssh_keys
+elif [ -f "./tests_custom_stale_ssh_keys" ]; then
+    . ./tests_custom_stale_ssh_keys
 else
     LogText "Warning: Custom test file tests_custom_stale_ssh_keys not found."
 fi

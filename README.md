@@ -1,79 +1,100 @@
-# Lynis Scheduled Task Auditing Enhancements
+# Lynis Custom Security Auditing Modules: Snap Classic Confinement & Stale SSH Keys
 
-Custom security auditing modules for **Lynis** on Linux/Ubuntu, implementing deep transitive target permission analysis and wildcard argument injection detection in scheduled jobs.
+Custom security auditing modules for **Lynis** on Linux/Ubuntu, implementing automated auditing for snap packages running in unconfined classic mode and detection of stale/abandoned SSH public keys across user accounts.
 
 Blog post: [low-level-log.blogspot.com](https://low-level-log.blogspot.com/2026/10/improving-lynis-cron-job-audits.html)
 
-## Files in this Directory
+---
 
-- **`tests_scheduling`**: Complete enhanced Lynis include file. Drop-in replacement for `/usr/share/lynis/include/tests_scheduling`.
-- **`SCHD-7705_cron_targets.sh`**: Standalone code module for Test `SCHD-7705` (Deep Target Permission Analysis).
-- **`SCHD-7706_cron_wildcards.sh`**: Standalone code module for Test `SCHD-7706` (Wildcard Command Injection Detection).
-- **`test_cron_vulnerabilities.sh`**: Automated verification test harness script. Sets up simulated vulnerable cron entries and executes a targeted Lynis audit to confirm detection and reporting.
-- **`tests_scheduling.orig`**: Backup copy of the stock Lynis 3.0.9 `tests_scheduling` include file.
+## Repository Structure
+
+- **`tests_custom`**: Master custom test loader. Placed into `/usr/share/lynis/include/tests_custom` to automatically load and execute custom checks during Lynis scans.
+- **`tests_custom_snaps_confinement`**: Test module for **`CUST-0050`** (Snap Classic Confinement Auditor).
+- **`tests_custom_stale_ssh_keys`**: Test module for **`CUST-0100`** (Stale and Abandoned SSH Key Auditor).
+- **`tests_custom.template`**: Baseline custom test template provided by upstream Lynis.
+- **`other/`**: Contains auxiliary scheduled task auditing modules (`SCHD-7705`, `SCHD-7706`, verification test harness, and `tests_scheduling` include files).
 
 <br>
 
 ---
 
-<details>
-<summary><font size="+1.5"><strong>Enhanced Test Descriptions</strong></font></summary>
+## Enhanced Custom Test Modules
 
-### 1. Baseline Test: `SCHD-7704`
-- **Description:** Verifies that `/etc/crontab`, `/etc/anacrontab`, and spool directories (`/etc/cron.*`, `/var/spool/cron`) are owned exclusively by `root` and stripped of world-writable bits (`o+w`).
-- **Limitation:** Only inspects the configuration pointer file; does not inspect what scripts the cron jobs actually execute.
+<details open>
+<summary><font size="+1.5"><strong>1. Snap Package Classic Confinement Auditor (`CUST-0050`)</strong></font></summary>
 
-### 2. Enhancement Option 1: `SCHD-7705` (Transitive Target Permission Auditing)
-- **Problem:** If a crontab has strict `0600 root:root` permissions but invokes `/opt/scripts/backup.sh` that is world-writable (`0777`) or owned by a non-root user, any local user can modify the script to gain root privilege when cron executes.
-- **Detection Logic:**
-  1. Parses unmasked directives in `/etc/crontab`, `/etc/anacrontab`, and `/etc/cron.d/*`.
-  2. Extracts referenced absolute file paths.
-  3. Checks ownership and permissions (`stat -c "%a"` / `stat -c "%U"`).
-  4. Flags target scripts that are group-writable, world-writable, or owned by non-root accounts.
+### Rationale & Threat Model
+On Ubuntu and modern Linux distributions, Snaps are containerized packages designed to execute in **strict confinement** using AppArmor profiles, seccomp filters, and cgroups to isolate applications from the host filesystem and kernel. However, packages installed with the `--classic` flag operate with classic confinement, completely disabling the sandbox security boundary and granting the application full, unconfined access to the host system just like a traditional package.
 
-### 3. Enhancement Option 2: `SCHD-7706` (Wildcard Command Injection Detection)
-- **Problem:** Commands such as `tar -czf /backup/data.tar.gz /var/www/uploads/*` expand wildcards before command execution. An unprivileged user with write access can plant flag files (such as `--checkpoint=1` and `--checkpoint-action=exec=shell.sh`) to execute arbitrary commands as root (GTFOBins pattern).
-- **Detection Logic:**
-  1. Scans cron entries across system and user spools for high-risk binaries (`tar`, `rsync`, `chown`, `chmod`, `rm`, `cp`, `zip`).
-  2. Detects occurrences of unquoted wildcards (`*`) alongside these utilities.
-  3. Logs vulnerable lines and generates actionable Lynis security warnings and suggestions.
+If a vulnerable or untrusted package is installed under classic confinement, attackers can compromise host filesystem integrity and escalate privileges.
+
+### Detection Mechanism
+1. Verifies the availability of the `snap` binary.
+2. Registers test `CUST-0050` (weight: `High`, category: `security`).
+3. Queries installed snap packages using `snap list 2>/dev/null | awk '/classic/ {print $1}'`.
+4. If classic packages are detected, flags a `[ WARNING ]` in the console, emits a `ReportWarning` identifying the offending package, and issues a remediation `ReportSuggestion` (`sudo snap remove <pkg>`).
 
 </details>
 
----
+<br>
+
+<details open>
+<summary><font size="+1.5"><strong>2. Stale and Abandoned SSH Public Key Auditor (`CUST-0100`)</strong></font></summary>
+
+### Rationale & Threat Model
+Public key authentication via `~/.ssh/authorized_keys` is the standard for UNIX system access. Over time, systems accumulate high-risk authorization persistence vulnerabilities:
+1. **Orphaned User Directories**: When users are removed from `/etc/passwd`, administrators frequently neglect to purge `/home/<username>`. If an attacker gains file write privileges or UID recycling occurs, these pre-authorized keys remain active attack surfaces.
+2. **Disabled Accounts with Configured Keys**: System accounts or terminated users often have their login shells set to disabled shells (e.g. `/usr/sbin/nologin`, `/bin/false`). However, if SSH daemon options, port forwarding, or custom subsystems allow authentication, having authorized keys configured for inactive accounts represents an unnecessary security vulnerability and compliance violation.
+
+### Detection Mechanism
+1. Registers test `CUST-0100` (weight: `Medium`, category: `security`).
+2. Iterates over `/home/*` directories and checks if the corresponding user account still exists in `/etc/passwd`. If missing and `~/.ssh/authorized_keys` is present, raises an abandoned key warning.
+3. Parses `/etc/passwd` to identify disabled accounts (`nologin`, `false`, `sync`, `halt`, `shutdown`) that retain `.ssh/authorized_keys` files.
+4. Generates granular security warnings and remediation suggestions recommending cleanup.
+
+</details>
 
 <br>
 
-## Installation & Deployment in WSL Ubuntu
+---
 
-1. Back up the original Lynis include file:
-   ```bash
-   sudo cp /usr/share/lynis/include/tests_scheduling /usr/share/lynis/include/tests_scheduling.bak
-   ```
+## Installation & Deployment in Linux / Ubuntu
 
-2. Copy the enhanced file into Lynis:
-   ```bash
-   sudo cp tests_scheduling /usr/share/lynis/include/tests_scheduling
-   sudo chmod 644 /usr/share/lynis/include/tests_scheduling
-   ```
+Follow these steps to deploy the custom modules into your Lynis installation:
 
-3. Verify that the new tests are registered:
-   ```bash
-   lynis show tests | grep 'SCHD-77'
-   ```
+### 1. Copy Test Modules into Lynis Include Directory
+```bash
+# Copy the custom test modules to Lynis's include directory
+sudo cp tests_custom /usr/share/lynis/include/tests_custom
+sudo cp tests_custom_snaps_confinement /usr/share/lynis/include/tests_custom_snaps_confinement
+sudo cp tests_custom_stale_ssh_keys /usr/share/lynis/include/tests_custom_stale_ssh_keys
 
+# Set standard permissions
+sudo chmod 644 /usr/share/lynis/include/tests_custom*
+```
+
+### 2. Verify Inclusion
+Ensure Lynis detects the custom include file:
+```bash
+lynis show includedir
+```
+
+---
 
 ## Running Audits
 
-Run a targeted audit for scheduled tasks:
+### Targeted Custom Test Execution
+Run a quick audit of the custom security checks:
 ```bash
-sudo lynis audit system --tests SCHD-7704,SCHD-7705,SCHD-7706 --quick
+sudo lynis audit system --tests CUST-0050,CUST-0100 --quick
 ```
-<details>
-<summary>Or run the automated test harness: (click to expand)</summary>
 
+### Full System Audit
+To run a full audit including all built-in benchmarks and our custom tests:
 ```bash
-chmod +x test_cron_vulnerabilities.sh
-sudo ./test_cron_vulnerabilities.sh
+sudo lynis audit system --quick
 ```
-</details>
+
+Review results in the Lynis log files:
+- **Audit Log**: `/var/log/lynis.log`
+- **Report Data**: `/var/log/lynis-report.dat`
