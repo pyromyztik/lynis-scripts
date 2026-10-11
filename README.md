@@ -18,9 +18,9 @@ Blog post: [low-level-log.blogspot.com](https://low-level-log.blogspot.com/2026/
 
 ---
 
-## Enhanced Custom Test Modules
+## Custom Test Modules (Click to expand)
 
-<details open>
+<details>
 <summary><font size="+1.5"><strong>1. Snap Package Classic Confinement Auditor (`CUST-0050`)</strong></font></summary>
 
 ### Rationale & Threat Model
@@ -38,7 +38,7 @@ If a vulnerable or untrusted package is installed under classic confinement, att
 
 <br>
 
-<details open>
+<details>
 <summary><font size="+1.5"><strong>2. Stale and Abandoned SSH Public Key Auditor (`CUST-0100`)</strong></font></summary>
 
 ### Rationale & Threat Model
